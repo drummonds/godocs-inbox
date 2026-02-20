@@ -619,6 +619,9 @@ type PageData struct {
 	Item       *InboxItem
 	Shortcuts  []ShortcutConfig
 	Remaining  int
+	Position   int
+	PrevPos    int
+	NextPos    int
 	Done       bool
 	Undoable   bool
 	UndoInfo   string
@@ -879,6 +882,12 @@ func serve(app *App) {
 		defer app.mu.Unlock()
 
 		flash := r.URL.Query().Get("flash")
+		posStr := r.URL.Query().Get("pos")
+		pos, _ := strconv.Atoi(posStr)
+		if pos < 1 {
+			pos = 1
+		}
+
 		data := PageData{
 			Page:      "inbox",
 			Shortcuts: app.config.Shortcuts,
@@ -900,14 +909,28 @@ func serve(app *App) {
 			if len(items) == 0 {
 				data.Done = true
 			} else {
-				content, _ := os.ReadFile(filepath.Join(app.config.InboxDir, items[0]))
+				if pos > len(items) {
+					http.Redirect(w, r, "/?pos=1", http.StatusSeeOther)
+					return
+				}
+				idx := pos - 1
+				content, _ := os.ReadFile(filepath.Join(app.config.InboxDir, items[idx]))
 				data.Item = &InboxItem{
-					Name:    items[0],
+					Name:    items[idx],
 					Content: template.HTML("<pre>" + template.HTMLEscapeString(string(content)) + "</pre>"),
+				}
+				data.Position = pos
+				data.PrevPos = pos - 1
+				if data.PrevPos < 1 {
+					data.PrevPos = 1
+				}
+				data.NextPos = pos + 1
+				if data.NextPos > len(items) {
+					data.NextPos = len(items)
 				}
 			}
 		} else {
-			sr, err := app.client.FetchUntagged(1, 1)
+			sr, err := app.client.FetchUntagged(pos, 1)
 			if err != nil {
 				log.Printf("error fetching untagged: %v", err)
 				http.Error(w, "Error connecting to godocs server", 502)
@@ -916,7 +939,19 @@ func serve(app *App) {
 			data.Remaining = sr.TotalCount
 			if sr.TotalCount == 0 {
 				data.Done = true
+			} else if pos > sr.TotalCount {
+				http.Redirect(w, r, "/?pos=1", http.StatusSeeOther)
+				return
 			} else {
+				data.Position = pos
+				data.PrevPos = pos - 1
+				if data.PrevPos < 1 {
+					data.PrevPos = 1
+				}
+				data.NextPos = pos + 1
+				if data.NextPos > sr.TotalCount {
+					data.NextPos = sr.TotalCount
+				}
 				doc := sr.Documents[0]
 				item := &InboxItem{
 					ULID:    doc.ULID,
@@ -992,6 +1027,7 @@ func serve(app *App) {
 		defer app.mu.Unlock()
 
 		tagKey := r.FormValue("tag")
+		pos := r.FormValue("pos")
 
 		if app.isDemo() {
 			item := r.FormValue("item")
@@ -1017,7 +1053,7 @@ func serve(app *App) {
 			}
 			app.lastAction = &LastAction{File: item, FromDir: app.config.InboxDir, ToDir: destDir}
 			flash := tagKey + ":" + tagName + " \u2190 " + item
-			http.Redirect(w, r, "/?flash="+flash, http.StatusSeeOther)
+			http.Redirect(w, r, "/?pos="+pos+"&flash="+flash, http.StatusSeeOther)
 		} else {
 			docULID := r.FormValue("ulid")
 			docName := r.FormValue("name")
@@ -1034,7 +1070,7 @@ func serve(app *App) {
 			}
 			if err := app.client.AddTag(docULID, shortcut.TagID); err != nil {
 				log.Printf("error tagging %s with %s: %v", docULID, shortcut.Name, err)
-				http.Redirect(w, r, "/?flash=Error: "+err.Error(), http.StatusSeeOther)
+				http.Redirect(w, r, "/?pos="+pos+"&flash=Error: "+err.Error(), http.StatusSeeOther)
 				return
 			}
 			app.captureTagSet(docULID)
@@ -1045,7 +1081,7 @@ func serve(app *App) {
 				TagName: shortcut.Name,
 			}
 			flash := shortcut.Key + ":" + shortcut.Name + " \u2190 " + docName
-			http.Redirect(w, r, "/?flash="+flash, http.StatusSeeOther)
+			http.Redirect(w, r, "/?pos="+pos+"&flash="+flash, http.StatusSeeOther)
 		}
 	})
 
@@ -1057,13 +1093,14 @@ func serve(app *App) {
 		app.mu.Lock()
 		defer app.mu.Unlock()
 
+		pos := r.FormValue("pos")
 		if !app.isDemo() {
 			ulid := r.FormValue("ulid")
 			if ulid != "" {
 				app.captureTagSet(ulid)
 			}
 		}
-		http.Redirect(w, r, "/", http.StatusSeeOther)
+		http.Redirect(w, r, "/?pos="+pos, http.StatusSeeOther)
 	})
 
 	http.HandleFunc("/api/apply-tagset", func(w http.ResponseWriter, r *http.Request) {
@@ -1076,6 +1113,7 @@ func serve(app *App) {
 
 		ulid := r.FormValue("ulid")
 		docName := r.FormValue("name")
+		pos := r.FormValue("pos")
 		indexStr := r.FormValue("index")
 		index, err := strconv.Atoi(indexStr)
 		if err != nil || index < 0 || index >= len(app.recentSets) || ulid == "" {
@@ -1091,7 +1129,7 @@ func serve(app *App) {
 		}
 		app.captureTagSet(ulid)
 		flash := set.Label + " ← " + docName
-		http.Redirect(w, r, "/?flash="+flash, http.StatusSeeOther)
+		http.Redirect(w, r, "/?pos="+pos+"&flash="+flash, http.StatusSeeOther)
 	})
 
 	http.HandleFunc("/undo", func(w http.ResponseWriter, r *http.Request) {
@@ -1102,8 +1140,9 @@ func serve(app *App) {
 		app.mu.Lock()
 		defer app.mu.Unlock()
 
+		pos := r.FormValue("pos")
 		if app.lastAction == nil {
-			http.Redirect(w, r, "/", http.StatusSeeOther)
+			http.Redirect(w, r, "/?pos="+pos, http.StatusSeeOther)
 			return
 		}
 
@@ -1115,14 +1154,14 @@ func serve(app *App) {
 			}
 			flash := "undo \u2190 " + app.lastAction.File
 			app.lastAction = nil
-			http.Redirect(w, r, "/?flash="+flash, http.StatusSeeOther)
+			http.Redirect(w, r, "/?pos="+pos+"&flash="+flash, http.StatusSeeOther)
 		} else {
 			if err := app.client.RemoveTag(app.lastAction.DocULID, app.lastAction.TagID); err != nil {
 				log.Printf("error undoing tag on %s: %v", app.lastAction.DocULID, err)
 			}
 			flash := "undo \u2190 " + app.lastAction.DocName
 			app.lastAction = nil
-			http.Redirect(w, r, "/?flash="+flash, http.StatusSeeOther)
+			http.Redirect(w, r, "/?pos="+pos+"&flash="+flash, http.StatusSeeOther)
 		}
 	})
 

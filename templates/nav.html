@@ -14,7 +14,11 @@
             {{if .Item}}{{if .Item.Processing}}
             <span class="navbar-item"><span class="tag is-warning ocr-pulse">OCR</span></span>
             {{end}}{{end}}
-            <span class="navbar-item"><span class="tag is-info">{{.Remaining}}</span></span>
+            <a class="navbar-item" href="/?pos=1" title="First">|&lt;</a>
+            <a class="navbar-item" href="/?pos={{.PrevPos}}" title="Previous">&lt;</a>
+            <span class="navbar-item"><span class="tag is-info">{{.Position}} of {{.Remaining}}</span></span>
+            <a class="navbar-item" href="/?pos={{.NextPos}}" title="Next">&gt;</a>
+            <a class="navbar-item" href="/?pos={{.Remaining}}" title="Last">&gt;|</a>
         </div>
         {{end}}{{end}}
     </div>

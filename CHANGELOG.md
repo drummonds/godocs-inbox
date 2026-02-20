@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.0] - 2026-02-19
+
+- Making buttons always clickable
+- Not losing place when submitting an image
+
+## [0.3.1] - 2026-02-19
+
+- Implmenting looking at the backlog set
+
 ## [0.3.0] - 2026-02-19
 
 - Changing formatting

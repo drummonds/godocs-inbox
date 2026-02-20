@@ -2,6 +2,7 @@
 <html>
 <head>
     <meta charset="utf-8">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect x='2' y='14' width='28' height='16' rx='3' fill='%234a90d9' stroke='%23336' stroke-width='1.5'/><path d='M2 17h9l2 4h6l2-4h9' fill='none' stroke='%23fff' stroke-width='1.5'/><path d='M6 6h20l3 11H3Z' fill='%236bb3f0' stroke='%23336' stroke-width='1.5'/></svg>">
     <title>Inbox - Godocs Inbox</title>
     {{if not .Done}}{{if not .IsDemo}}{{if .Item}}{{if or .Item.Processing .Item.LLMWorking}}
     <meta http-equiv="refresh" content="3">
@@ -15,9 +16,18 @@
             background: #f5f5f5; padding: 0.4rem 0.75rem; border-radius: 4px;
             margin-bottom: 0.5rem; display: flex; flex-wrap: wrap;
             gap: 0.2rem 0.75rem; align-items: center; font-size: 0.9rem;
+            transition: background 0.2s ease;
         }
+        .control-bar.kb-active { background: #e8f5e9; }
+        .mode-toggle {
+            background: none; border: 2px solid #999; border-radius: 4px;
+            padding: 2px 6px; cursor: pointer; font-size: 1rem; line-height: 1;
+            color: #666; transition: all 0.2s ease;
+        }
+        .mode-toggle.kb-active { border-color: #4caf50; color: #2e7d32; background: #e8f5e9; }
         .control-sep { color: #ccc; user-select: none; }
-        .shortcut-item { display: inline-flex; align-items: center; gap: 0.25rem; white-space: nowrap; }
+        .shortcut-item { display: inline-flex; align-items: center; gap: 0.25rem; white-space: nowrap; cursor: pointer; border-radius: 3px; padding: 0.1rem 0.3rem; }
+        .shortcut-item:hover { background: rgba(0,0,0,0.08); }
         .undo-hint { font-size: 0.8rem; color: #888; }
         .recent-tag { display: inline-block; padding: 0 0.4rem; border-radius: 2px; font-size: 0.8rem; color: #fff; }
 
@@ -115,25 +125,26 @@
     {{end}}
 
     <!-- Control bar: shortcuts | recent sets | done/undo -->
-    <div class="control-bar">
+    <div class="control-bar kb-active" id="controlBar">
+        <button class="mode-toggle kb-active" id="modeToggle" onclick="toggleMode()" title="Toggle keyboard/edit mode">&#9000;</button>
         {{range .Shortcuts}}
-        <span class="shortcut-item"><kbd>{{.Key}}</kbd> {{.Name}}</span>
+        <span class="shortcut-item" data-shortcut-key="{{.Key}}"><kbd>{{.Key}}</kbd> {{.Name}}</span>
         {{end}}
 
         {{if not .IsDemo}}
         {{if .RecentSets}}
         <span class="control-sep">│</span>
         {{range $i, $set := .RecentSets}}
-        <span class="shortcut-item"><kbd>{{add $i 1}}</kbd> {{range .Tags}}<span class="recent-tag" style="background:{{.Color}};">{{.Name}}</span>{{end}}</span>
+        <span class="shortcut-item" data-set-index="{{$i}}"><kbd>{{add $i 1}}</kbd> {{range .Tags}}<span class="recent-tag" style="background:{{.Color}};">{{.Name}}</span>{{end}}</span>
         {{end}}
         {{end}}
 
         <span class="control-sep">│</span>
-        <span class="shortcut-item"><kbd>d</kbd> done</span>
+        <span class="shortcut-item" data-action="done"><kbd>d</kbd> done</span>
         {{end}}
 
         {{if .Undoable}}
-        <span class="shortcut-item"><kbd>u</kbd> <span class="undo-hint">undo ({{.UndoInfo}})</span></span>
+        <span class="shortcut-item" data-action="undo"><kbd>u</kbd> <span class="undo-hint">undo ({{.UndoInfo}})</span></span>
         {{end}}
     </div>
 
@@ -217,25 +228,71 @@
     <form id="tagForm" method="POST" action="/tag">
         <input type="hidden" name="item" value="{{.Item.Name}}">
         <input type="hidden" name="tag" id="tagInput">
+        <input type="hidden" name="pos" value="{{.Position}}">
     </form>
     {{else}}
     <form id="tagForm" method="POST" action="/tag">
         <input type="hidden" name="ulid" value="{{.Item.ULID}}">
         <input type="hidden" name="name" value="{{.Item.Name}}">
         <input type="hidden" name="tag" id="tagInput">
+        <input type="hidden" name="pos" value="{{.Position}}">
     </form>
     <form id="doneForm" method="POST" action="/done">
         <input type="hidden" name="ulid" value="{{.Item.ULID}}">
+        <input type="hidden" name="pos" value="{{.Position}}">
     </form>
     <form id="applySetForm" method="POST" action="/api/apply-tagset">
         <input type="hidden" name="ulid" value="{{.Item.ULID}}">
         <input type="hidden" name="name" value="{{.Item.Name}}">
         <input type="hidden" name="index" id="setIndexInput">
+        <input type="hidden" name="pos" value="{{.Position}}">
     </form>
     {{end}}
-    <form id="undoForm" method="POST" action="/undo"></form>
+    <form id="undoForm" method="POST" action="/undo">
+        <input type="hidden" name="pos" value="{{.Position}}">
+    </form>
 
     <script>
+    var kbMode = true;
+
+    function toggleMode() {
+        kbMode = !kbMode;
+        var bar = document.getElementById('controlBar');
+        var btn = document.getElementById('modeToggle');
+        if (kbMode) {
+            bar.classList.add('kb-active');
+            btn.classList.add('kb-active');
+            btn.innerHTML = '&#9000;';
+            btn.title = 'Keyboard mode (click to switch to edit mode)';
+        } else {
+            bar.classList.remove('kb-active');
+            btn.classList.remove('kb-active');
+            btn.innerHTML = '&#9998;';
+            btn.title = 'Edit mode (click to switch to keyboard mode)';
+        }
+    }
+
+    // Click handlers for shortcut items (always active)
+    document.addEventListener('click', function(e) {
+        var item = e.target.closest('.shortcut-item');
+        if (!item) return;
+        var key = item.dataset.shortcutKey;
+        if (key) {
+            document.getElementById('tagInput').value = key;
+            document.getElementById('tagForm').submit();
+            return;
+        }
+        var setIndex = item.dataset.setIndex;
+        if (setIndex !== undefined) {
+            document.getElementById('setIndexInput').value = setIndex;
+            document.getElementById('applySetForm').submit();
+            return;
+        }
+        var action = item.dataset.action;
+        if (action === 'done') { document.getElementById('doneForm').submit(); return; }
+        if (action === 'undo') { document.getElementById('undoForm').submit(); return; }
+    });
+
     {{if not .IsDemo}}
     function updateCount() {
         var n = document.querySelectorAll('.tag-btn.active').length;
@@ -351,6 +408,7 @@
 
     document.addEventListener('keydown', function(e) {
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+        if (!kbMode) return;
         var validKeys = [{{range .Shortcuts}}'{{.Key}}',{{end}}];
         if (validKeys.includes(e.key)) {
             document.getElementById('tagInput').value = e.key;

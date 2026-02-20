@@ -19,6 +19,9 @@
             <span class="navbar-item"><span class="tag is-info">{{.Position}} of {{.Remaining}}</span></span>
             <a class="navbar-item" href="/?pos={{.NextPos}}" title="Next">&gt;</a>
             <a class="navbar-item" href="/?pos={{.Remaining}}" title="Last">&gt;|</a>
+            <form method="POST" action="/sync" style="display:inline;">
+                <button class="navbar-item" style="border:none;background:none;cursor:pointer;" title="Sync">&#x21bb;</button>
+            </form>
         </div>
         {{end}}{{end}}
     </div>

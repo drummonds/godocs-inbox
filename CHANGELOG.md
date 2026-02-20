@@ -4,10 +4,11 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-## [0.4.0] - 2026-02-19
+## [0.4.2] - 2026-02-19
 
 - Making buttons always clickable
 - Not losing place when submitting an image
+- Manual syncing so doesn't keep jumlping about if data loading is going on.
 
 ## [0.3.1] - 2026-02-19
 

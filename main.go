@@ -377,11 +377,27 @@ type App struct {
 	recentSets   []RecentTagSet    // last N applied tag sets
 	docStage     map[string]string // ULID → current processing stage (stageOCR/stageLLM)
 	processingMu sync.Mutex
-	thumbDir     string // cache dir for hi-res thumbnails
+	thumbDir     string           // cache dir for hi-res thumbnails
+	untagged     []GodocsDocument // cached untagged queue (server mode)
+	untaggedTime time.Time        // when last synced
 }
 
 func (app *App) isDemo() bool {
 	return app.client == nil
+}
+
+func (app *App) syncUntagged() {
+	if app.isDemo() {
+		return
+	}
+	sr, err := app.client.FetchUntagged(1, 10000)
+	if err != nil {
+		log.Printf("syncUntagged: %v", err)
+		return
+	}
+	app.untagged = sr.Documents
+	app.untaggedTime = time.Now()
+	log.Printf("syncUntagged: %d documents cached", len(app.untagged))
 }
 
 func (app *App) hiresThumbPath(ulid string) string {
@@ -835,6 +851,7 @@ func main() {
 		thumbDir := filepath.Join(cacheDir, "godocs-inbox", "thumbs")
 		os.MkdirAll(thumbDir, 0755)
 		app = &App{config: cfg, configFile: absPath, client: client, llmDates: make(map[string]bool), docStage: make(map[string]string), thumbDir: thumbDir}
+		app.syncUntagged()
 	}
 
 	if *addr != "" {
@@ -930,16 +947,10 @@ func serve(app *App) {
 				}
 			}
 		} else {
-			sr, err := app.client.FetchUntagged(pos, 1)
-			if err != nil {
-				log.Printf("error fetching untagged: %v", err)
-				http.Error(w, "Error connecting to godocs server", 502)
-				return
-			}
-			data.Remaining = sr.TotalCount
-			if sr.TotalCount == 0 {
+			data.Remaining = len(app.untagged)
+			if len(app.untagged) == 0 {
 				data.Done = true
-			} else if pos > sr.TotalCount {
+			} else if pos > len(app.untagged) {
 				http.Redirect(w, r, "/?pos=1", http.StatusSeeOther)
 				return
 			} else {
@@ -949,10 +960,10 @@ func serve(app *App) {
 					data.PrevPos = 1
 				}
 				data.NextPos = pos + 1
-				if data.NextPos > sr.TotalCount {
-					data.NextPos = sr.TotalCount
+				if data.NextPos > len(app.untagged) {
+					data.NextPos = len(app.untagged)
 				}
-				doc := sr.Documents[0]
+				doc := app.untagged[pos-1]
 				item := &InboxItem{
 					ULID:    doc.ULID,
 					Name:    doc.Name,
@@ -1068,6 +1079,13 @@ func serve(app *App) {
 				http.Redirect(w, r, "/", http.StatusSeeOther)
 				return
 			}
+			// Verify ULID matches cached queue position
+			posInt, _ := strconv.Atoi(pos)
+			if posInt < 1 || posInt > len(app.untagged) || app.untagged[posInt-1].ULID != docULID {
+				app.syncUntagged()
+				http.Redirect(w, r, "/?pos=1&flash=Queue+changed,+re-synced", http.StatusSeeOther)
+				return
+			}
 			if err := app.client.AddTag(docULID, shortcut.TagID); err != nil {
 				log.Printf("error tagging %s with %s: %v", docULID, shortcut.Name, err)
 				http.Redirect(w, r, "/?pos="+pos+"&flash=Error: "+err.Error(), http.StatusSeeOther)
@@ -1080,6 +1098,7 @@ func serve(app *App) {
 				TagID:   shortcut.TagID,
 				TagName: shortcut.Name,
 			}
+			app.syncUntagged()
 			flash := shortcut.Key + ":" + shortcut.Name + " \u2190 " + docName
 			http.Redirect(w, r, "/?pos="+pos+"&flash="+flash, http.StatusSeeOther)
 		}
@@ -1101,6 +1120,17 @@ func serve(app *App) {
 			}
 		}
 		http.Redirect(w, r, "/?pos="+pos, http.StatusSeeOther)
+	})
+
+	http.HandleFunc("/sync", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != "POST" {
+			http.Redirect(w, r, "/", http.StatusSeeOther)
+			return
+		}
+		app.mu.Lock()
+		app.syncUntagged()
+		app.mu.Unlock()
+		http.Redirect(w, r, "/?pos=1", http.StatusSeeOther)
 	})
 
 	http.HandleFunc("/api/apply-tagset", func(w http.ResponseWriter, r *http.Request) {
@@ -1128,6 +1158,7 @@ func serve(app *App) {
 			}
 		}
 		app.captureTagSet(ulid)
+		app.syncUntagged()
 		flash := set.Label + " ← " + docName
 		http.Redirect(w, r, "/?pos="+pos+"&flash="+flash, http.StatusSeeOther)
 	})
@@ -1159,6 +1190,7 @@ func serve(app *App) {
 			if err := app.client.RemoveTag(app.lastAction.DocULID, app.lastAction.TagID); err != nil {
 				log.Printf("error undoing tag on %s: %v", app.lastAction.DocULID, err)
 			}
+			app.syncUntagged()
 			flash := "undo \u2190 " + app.lastAction.DocName
 			app.lastAction = nil
 			http.Redirect(w, r, "/?pos="+pos+"&flash="+flash, http.StatusSeeOther)

@@ -1,0 +1,22 @@
+{{define "nav"}}
+<nav class="navbar is-light mb-2" role="navigation">
+    <div class="navbar-brand">
+        <a class="navbar-item has-text-weight-bold" href="/">Godocs Inbox</a>
+    </div>
+    <div class="navbar-menu is-active">
+        <div class="navbar-start">
+            <a class="navbar-item{{if eq .Page "inbox"}} is-active has-text-weight-semibold{{end}}" href="/">Inbox</a>
+            <a class="navbar-item{{if eq .Page "tagged"}} is-active has-text-weight-semibold{{end}}" href="/tagged">Tagged</a>
+            <a class="navbar-item{{if eq .Page "about"}} is-active has-text-weight-semibold{{end}}" href="/about">About</a>
+        </div>
+        {{if eq .Page "inbox"}}{{if not .Done}}
+        <div class="navbar-end">
+            {{if .Item}}{{if .Item.Processing}}
+            <span class="navbar-item"><span class="tag is-warning ocr-pulse">OCR</span></span>
+            {{end}}{{end}}
+            <span class="navbar-item"><span class="tag is-info">{{.Remaining}}</span></span>
+        </div>
+        {{end}}{{end}}
+    </div>
+</nav>
+{{end}}

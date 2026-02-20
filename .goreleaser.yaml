@@ -1,0 +1,19 @@
+version: 2
+
+builds:
+  - main: .
+    binary: godocs-inbox
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+archives:
+  - format: tar.gz
+
+changelog:
+  sort: asc

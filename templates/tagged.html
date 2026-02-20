@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Tagged - Godocs Inbox</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <style>
+        .wrap { max-width: 900px; margin: 0 auto; padding: 0 1.5rem 1.5rem; }
+    </style>
+</head>
+<body>
+    {{template "nav" .}}
+    <div class="wrap">
+
+    {{if .IsDemo}}
+        {{if not .Groups}}
+        <div class="notification is-light">
+            <p>No tagged items yet.</p>
+        </div>
+        {{else}}
+        <p class="mb-4"><span class="tag is-info">{{.Total}} total</span></p>
+        {{range .Groups}}
+        <div class="box">
+            <p class="is-size-6 has-text-weight-semibold">{{.Name}} <span class="tag is-light">{{len .Items}}</span></p>
+            <div class="content">
+                <ul>
+                {{range .Items}}
+                    <li>{{.}}</li>
+                {{end}}
+                </ul>
+            </div>
+        </div>
+        {{end}}
+        {{end}}
+    {{else}}
+        <div class="notification is-light">
+            <p>Tagged documents are managed by your godocs server.</p>
+            <p>Use the godocs UI to browse tagged documents.</p>
+        </div>
+    {{end}}
+
+    </div>
+</body>
+</html>

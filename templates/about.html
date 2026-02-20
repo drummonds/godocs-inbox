@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>About - Godocs Inbox</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <style>
+        .wrap { max-width: 900px; margin: 0 auto; padding: 0 1.5rem 1.5rem; }
+        .config-table td:first-child { font-weight: 600; white-space: nowrap; width: 1%; }
+        .config-table td:nth-child(2) { font-family: monospace; }
+    </style>
+</head>
+<body>
+    {{template "nav" .}}
+    <div class="wrap">
+
+    <h2 class="title is-5">Configuration</h2>
+
+    <div class="box">
+        <table class="table is-fullwidth config-table">
+            <tbody>
+                <tr>
+                    <td>Config source</td>
+                    <td>{{.ConfigSource}}</td>
+                </tr>
+                <tr>
+                    <td>Mode</td>
+                    <td>{{if .IsDemo}}Demo (local files){{else}}Server{{end}}</td>
+                </tr>
+                {{if not .IsDemo}}
+                <tr>
+                    <td>Godocs server</td>
+                    <td><a href="{{.GodocsURL}}" target="_blank">{{.GodocsURL}}</a></td>
+                </tr>
+                {{end}}
+                <tr>
+                    <td>Listen address</td>
+                    <td>{{.Config.Addr}}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2 class="title is-5">Keyboard Shortcuts</h2>
+
+    <div class="box">
+        <table class="table is-fullwidth">
+            <thead>
+                <tr><th>Key</th><th>Tag</th>{{if not .IsDemo}}<th>Tag ID</th><th>Color</th>{{end}}</tr>
+            </thead>
+            <tbody>
+                {{range .Config.Shortcuts}}
+                <tr>
+                    <td><kbd style="font-family:monospace; font-weight:bold; border:2px solid #666; padding:2px 8px; border-radius:4px; background:#fff;">{{.Key}}</kbd></td>
+                    <td>{{.Name}}</td>
+                    {{if not $.IsDemo}}
+                    <td>{{.TagID}}</td>
+                    <td><span style="display:inline-block; width:1rem; height:1rem; border-radius:50%; background:{{.Color}}; vertical-align:middle;"></span> {{.Color}}</td>
+                    {{end}}
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    {{if .ServerTags}}
+    <h2 class="title is-5">All Server Tags</h2>
+    <p class="mb-3 has-text-grey is-size-7">Use these IDs in your <code>godocs-inbox.yaml</code> to configure shortcuts.</p>
+
+    <div class="box">
+        <table class="table is-fullwidth is-size-7">
+            <thead>
+                <tr><th>ID</th><th>Name</th><th>Group</th><th>Color</th></tr>
+            </thead>
+            <tbody>
+                {{range .ServerTags}}
+                <tr>
+                    <td>{{.ID}}</td>
+                    <td>{{.Name}}</td>
+                    <td>{{.TagGroup}}</td>
+                    <td><span style="display:inline-block; width:0.8rem; height:0.8rem; border-radius:50%; background:{{.Color}}; vertical-align:middle;"></span> {{.Color}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+    {{end}}
+
+    </div>
+</body>
+</html>

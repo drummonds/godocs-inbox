@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Inbox - Godocs Inbox</title>
+    {{if not .Done}}{{if not .IsDemo}}{{if .Item}}{{if or .Item.Processing .Item.LLMWorking}}
+    <meta http-equiv="refresh" content="3">
+    {{end}}{{end}}{{end}}{{end}}
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.4/css/bulma.min.css">
+    <style>
+        .wrap { max-width: 1200px; margin: 0 auto; padding: 0 0.5rem 1rem; }
+
+        /* Control bar */
+        .control-bar {
+            background: #f5f5f5; padding: 0.4rem 0.75rem; border-radius: 4px;
+            margin-bottom: 0.5rem; display: flex; flex-wrap: wrap;
+            gap: 0.2rem 0.75rem; align-items: center; font-size: 0.9rem;
+        }
+        .control-sep { color: #ccc; user-select: none; }
+        .shortcut-item { display: inline-flex; align-items: center; gap: 0.25rem; white-space: nowrap; }
+        .undo-hint { font-size: 0.8rem; color: #888; }
+        .recent-tag { display: inline-block; padding: 0 0.4rem; border-radius: 2px; font-size: 0.8rem; color: #fff; }
+
+        /* Keyboard keys */
+        kbd { font-family: monospace; font-weight: bold; font-size: 1rem;
+              border: 2px solid #666; padding: 1px 6px; border-radius: 3px;
+              background: #fff; min-width: 1.2rem; text-align: center; line-height: 1.4; }
+
+        /* Flash */
+        .flash-bar { font-size: 0.85rem; color: #555; padding: 0.25rem 0; animation: fadeout 3s forwards; }
+        @keyframes fadeout { 0% { opacity: 1; } 70% { opacity: 1; } 100% { opacity: 0; } }
+
+        /* Two-column layout */
+        .main-content { display: flex; gap: 1rem; align-items: flex-start; }
+        .doc-column { flex: 1; min-width: 0; }
+        .tags-column {
+            flex: 2; min-width: 250px;
+            max-height: calc(100vh - 8rem); overflow-y: auto;
+            padding-left: 1rem; border-left: 1px solid #eee;
+        }
+
+        /* Document */
+        .doc-header { margin-bottom: 0.4rem; }
+        .doc-meta { font-size: 0.85rem; color: #666; margin: 0.2rem 0 0.5rem; }
+        .doc-meta span { margin-right: 0.75rem; }
+        .doc-thumbnail { flex-shrink: 0; }
+        .doc-thumbnail img { width: 100%; max-width: 600px; border: 1px solid #ddd; border-radius: 4px; }
+        .text-row { margin-top: 0.5rem; }
+        .content-box { background: #f5f5f5; padding: 1rem; border-radius: 4px; max-height: calc(100vh - 20rem); overflow-y: auto; }
+        .content-box pre { white-space: pre-wrap; word-wrap: break-word; margin: 0; font-size: 0.85rem; }
+
+        /* Tags */
+        .tag-group { margin-bottom: 0.75rem; }
+        .tag-group-name { font-weight: 600; font-size: 0.75rem; color: #555; margin-bottom: 0.25rem; text-transform: uppercase; letter-spacing: 0.05em; }
+        .tag-grid { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+        .tag-btn {
+            display: inline-flex; align-items: center; gap: 0.2rem;
+            padding: 0.2rem 0.5rem; border-radius: 3px; border: 2px solid #ddd;
+            background: #fff; cursor: pointer; font-size: 0.8rem;
+            transition: all 0.15s ease;
+        }
+        .tag-btn:hover { border-color: #aaa; }
+        .tag-btn.active { border-color: var(--tag-color, #3498db); background: var(--tag-color, #3498db); color: #fff; font-weight: 600; }
+        .tag-btn .dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; }
+        .tag-btn.active .dot { background: #fff; }
+        .tag-count { font-size: 0.8rem; color: #666; margin-bottom: 0.5rem; }
+
+        /* New tag */
+        .new-tag-section { border-top: 1px solid #eee; padding-top: 0.5rem; margin-top: 0.5rem; }
+        .new-tag-section summary { font-size: 0.8rem; font-weight: 600; cursor: pointer; color: #555; }
+        .new-tag-row { display: flex; gap: 0.3rem; align-items: center; margin-top: 0.4rem; flex-wrap: wrap; }
+        .new-tag-row input, .new-tag-row select { font-size: 0.8rem; padding: 0.2rem 0.4rem; }
+
+        /* OCR */
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .ocr-pulse { animation: pulse 1.5s ease-in-out infinite; }
+        .ocr-notice { font-size: 0.85rem; color: #888; padding: 0.5rem; }
+    </style>
+</head>
+<body>
+    {{template "nav" .}}
+    <div class="wrap">
+
+    {{if .Flash}}<div class="flash-bar">{{.Flash}}</div>{{end}}
+
+    {{if .Done}}
+    <div class="notification is-success">
+        <p class="title is-4">Inbox zero!</p>
+        <p>All items have been processed.
+        {{if .IsDemo}}<a href="/tagged">View tagged items</a>
+        {{else}}<a href="{{.GodocsURL}}" target="_blank">Open godocs</a>
+        {{end}}</p>
+    </div>
+    {{else}}
+
+    <!-- Doc name + meta (full-width, above control bar) -->
+    <div class="doc-header">
+        <strong class="is-size-5">{{.Item.Name}}</strong>
+    </div>
+    {{if not .IsDemo}}
+    <div class="doc-meta">
+        {{if .Item.DocType}}<span class="tag is-light">{{.Item.DocType}}</span>{{end}}
+        {{if .Item.LLMWorking}}
+            <span class="tag is-warning ocr-pulse">LLM...</span>
+        {{else if .Item.DocumentDate}}
+            {{if .Item.DateIsLLM}}
+            <span class="tag is-warning is-light">{{.Item.DocumentDate}} (LLM)</span>
+            {{else}}
+            <span class="tag is-success is-light">{{.Item.DocumentDate}}</span>
+            {{end}}
+        {{end}}
+        {{if .Item.IngressTime}}<span>{{.Item.IngressTime}}</span>{{end}}
+        {{if .Item.Folder}}<span>{{.Item.Folder}}</span>{{end}}
+    </div>
+    {{end}}
+
+    <!-- Control bar: shortcuts | recent sets | done/undo -->
+    <div class="control-bar">
+        {{range .Shortcuts}}
+        <span class="shortcut-item"><kbd>{{.Key}}</kbd> {{.Name}}</span>
+        {{end}}
+
+        {{if not .IsDemo}}
+        {{if .RecentSets}}
+        <span class="control-sep">│</span>
+        {{range $i, $set := .RecentSets}}
+        <span class="shortcut-item"><kbd>{{add $i 1}}</kbd> {{range .Tags}}<span class="recent-tag" style="background:{{.Color}};">{{.Name}}</span>{{end}}</span>
+        {{end}}
+        {{end}}
+
+        <span class="control-sep">│</span>
+        <span class="shortcut-item"><kbd>d</kbd> done</span>
+        {{end}}
+
+        {{if .Undoable}}
+        <span class="shortcut-item"><kbd>u</kbd> <span class="undo-hint">undo ({{.UndoInfo}})</span></span>
+        {{end}}
+    </div>
+
+    <!-- Main content -->
+    <div class="main-content">
+        <!-- Document column -->
+        <div class="doc-column">
+            {{if .IsDemo}}
+            <div class="content-box">{{.Item.Content}}</div>
+            {{else}}
+            {{if .Item.HasThumbnail}}
+            <div class="doc-thumbnail">
+                <a href="{{.Item.ViewURL}}" target="_blank">
+                    <img id="docThumb" src="/proxy/thumbnail/{{.Item.ULID}}" alt="thumbnail"
+                         data-hires-src="/hires/thumbnail/{{.Item.ULID}}"
+                         data-hires-ready="{{.Item.HasHiresThumb}}"
+                         data-ulid="{{.Item.ULID}}">
+                </a>
+            </div>
+            {{end}}
+            {{if .Item.Processing}}
+            <p class="ocr-notice ocr-pulse">OCR in progress...</p>
+            {{end}}
+            {{end}}
+        </div>
+
+        {{if not .IsDemo}}
+        <!-- Tags column -->
+        <div class="tags-column" id="tagEditorBox">
+            <div class="tag-count" id="tagCount"></div>
+
+            {{range .Groups}}
+            <div class="tag-group">
+                <div class="tag-group-name">{{.Name}}</div>
+                <div class="tag-grid">
+                    {{range .Tags}}
+                    <button class="tag-btn{{if .Active}} active{{end}}"
+                            data-tag-id="{{.ID}}"
+                            data-active="{{.Active}}"
+                            style="--tag-color: {{.Color}};"
+                            onclick="toggleTag(this, '{{$.Item.ULID}}', {{.ID}})">
+                        <span class="dot" style="background: {{.Color}};"></span>
+                        {{.Name}}
+                    </button>
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+
+            <!-- New tag -->
+            <details class="new-tag-section">
+                <summary>+ New tag</summary>
+                <div class="new-tag-row">
+                    <input type="text" id="newTagName" placeholder="Name" style="flex:2;">
+                    <select id="newTagGroup" style="flex:1;">
+                        <option value="">(no group)</option>
+                        {{range .TagGroups}}
+                        <option value="{{.}}">{{.}}</option>
+                        {{end}}
+                    </select>
+                    <input type="color" id="newTagColor" value="#3498db" style="width:2rem; height:1.6rem; padding:0; border:none;">
+                    <button onclick="createTag()" style="font-size:0.8rem; cursor:pointer;">Create</button>
+                </div>
+                <p style="font-size:0.75rem; color:#c00;" id="newTagError"></p>
+            </details>
+        </div>
+        {{end}}
+    </div>
+
+    {{if not .IsDemo}}
+    <!-- Full-width text row -->
+    {{if .Item.TextPreview}}
+    <div class="text-row">
+        <div class="content-box"><pre>{{.Item.TextPreview}}</pre></div>
+    </div>
+    {{end}}
+    {{end}}
+
+    <!-- Forms -->
+    {{if .IsDemo}}
+    <form id="tagForm" method="POST" action="/tag">
+        <input type="hidden" name="item" value="{{.Item.Name}}">
+        <input type="hidden" name="tag" id="tagInput">
+    </form>
+    {{else}}
+    <form id="tagForm" method="POST" action="/tag">
+        <input type="hidden" name="ulid" value="{{.Item.ULID}}">
+        <input type="hidden" name="name" value="{{.Item.Name}}">
+        <input type="hidden" name="tag" id="tagInput">
+    </form>
+    <form id="doneForm" method="POST" action="/done">
+        <input type="hidden" name="ulid" value="{{.Item.ULID}}">
+    </form>
+    <form id="applySetForm" method="POST" action="/api/apply-tagset">
+        <input type="hidden" name="ulid" value="{{.Item.ULID}}">
+        <input type="hidden" name="name" value="{{.Item.Name}}">
+        <input type="hidden" name="index" id="setIndexInput">
+    </form>
+    {{end}}
+    <form id="undoForm" method="POST" action="/undo"></form>
+
+    <script>
+    {{if not .IsDemo}}
+    function updateCount() {
+        var n = document.querySelectorAll('.tag-btn.active').length;
+        var el = document.getElementById('tagCount');
+        if (el) el.textContent = n + ' tag' + (n !== 1 ? 's' : '') + ' applied';
+    }
+    updateCount();
+
+    // Hi-res thumbnail swap
+    (function() {
+        var img = document.getElementById('docThumb');
+        if (!img) return;
+        var hiresSrc = img.dataset.hiresSrc;
+        var ready = img.dataset.hiresReady === 'true';
+        if (ready) {
+            var pre = new Image();
+            pre.onload = function() { img.src = hiresSrc; };
+            pre.src = hiresSrc;
+            return;
+        }
+        var ulid = img.dataset.ulid;
+        if (!ulid) return;
+        var attempts = 0;
+        var poll = setInterval(function() {
+            attempts++;
+            if (attempts > 30) { clearInterval(poll); return; }
+            fetch('/hires/thumbnail-ready/' + ulid)
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.ready) {
+                    clearInterval(poll);
+                    var pre = new Image();
+                    pre.onload = function() { img.src = hiresSrc; };
+                    pre.src = hiresSrc;
+                }
+            })
+            .catch(function() {});
+        }, 2000);
+    })();
+
+    function toggleTag(btn, ulid, tagId) {
+        var isActive = btn.classList.contains('active');
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+        fetch('/api/toggle-tag', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ulid: ulid, tag_id: tagId, active: isActive})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.active) { btn.classList.add('active'); }
+            else { btn.classList.remove('active'); }
+            btn.dataset.active = data.active;
+            updateCount();
+        })
+        .catch(function(err) { console.error('toggle failed:', err); })
+        .finally(function() { btn.disabled = false; btn.style.opacity = '1'; });
+    }
+
+    function createTag() {
+        var name = document.getElementById('newTagName').value.trim();
+        var group = document.getElementById('newTagGroup').value;
+        var color = document.getElementById('newTagColor').value;
+        var errEl = document.getElementById('newTagError');
+        errEl.textContent = '';
+        if (!name) { errEl.textContent = 'Name required'; return; }
+
+        fetch('/api/create-tag', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name: name, color: color, group: group, ulid: '{{.Item.ULID}}'})
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (data.error) { errEl.textContent = data.error; return; }
+            var groupName = data.group || 'Other';
+            var container = findOrCreateGroup(groupName);
+            var btn = document.createElement('button');
+            btn.className = 'tag-btn' + (data.applied ? ' active' : '');
+            btn.dataset.tagId = data.id;
+            btn.style.cssText = '--tag-color: ' + data.color + ';';
+            btn.innerHTML = '<span class="dot" style="background:' + data.color + ';"></span> ' + data.name;
+            btn.onclick = function() { toggleTag(btn, '{{.Item.ULID}}', data.id); };
+            container.appendChild(btn);
+            document.getElementById('newTagName').value = '';
+            updateCount();
+        })
+        .catch(function(err) { errEl.textContent = 'Failed: ' + err; });
+    }
+
+    function findOrCreateGroup(groupName) {
+        var groups = document.querySelectorAll('.tag-group');
+        for (var i = 0; i < groups.length; i++) {
+            var nameEl = groups[i].querySelector('.tag-group-name');
+            if (nameEl && nameEl.textContent.trim() === groupName) {
+                return groups[i].querySelector('.tag-grid');
+            }
+        }
+        var box = document.getElementById('tagEditorBox');
+        var det = box.querySelector('.new-tag-section');
+        var div = document.createElement('div');
+        div.className = 'tag-group';
+        div.innerHTML = '<div class="tag-group-name">' + groupName + '</div><div class="tag-grid"></div>';
+        box.insertBefore(div, det);
+        return div.querySelector('.tag-grid');
+    }
+
+    document.getElementById('newTagName').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') { e.preventDefault(); createTag(); }
+    });
+    {{end}}
+
+    document.addEventListener('keydown', function(e) {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA' || e.target.tagName === 'SELECT') return;
+        var validKeys = [{{range .Shortcuts}}'{{.Key}}',{{end}}];
+        if (validKeys.includes(e.key)) {
+            document.getElementById('tagInput').value = e.key;
+            document.getElementById('tagForm').submit();
+            return;
+        }
+        {{if not .IsDemo}}
+        var setKeys = ['1', '2', '3'];
+        var setCount = {{len .RecentSets}};
+        var idx = setKeys.indexOf(e.key);
+        if (idx >= 0 && idx < setCount) {
+            document.getElementById('setIndexInput').value = idx;
+            document.getElementById('applySetForm').submit();
+            return;
+        }
+        if (e.key === 'd') {
+            document.getElementById('doneForm').submit();
+            return;
+        }
+        {{end}}
+        {{if .Undoable}}
+        if (e.key === 'u') {
+            document.getElementById('undoForm').submit();
+            return;
+        }
+        {{end}}
+    });
+    </script>
+    {{end}}
+
+    </div>
+</body>
+</html>

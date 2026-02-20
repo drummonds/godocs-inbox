@@ -1,0 +1,7 @@
+Server: web-prod-03
+Region: eu-west-1
+Status: DECOMMISSIONED 2024-01-15
+
+This server was replaced by web-prod-07.
+Config preserved for audit trail only.
+Can be deleted after 2025-01-15.

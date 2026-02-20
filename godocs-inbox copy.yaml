@@ -1,0 +1,14 @@
+# godocs-inbox configuration
+# Tag IDs come from your godocs server: GET /api/tags
+
+godocs_server: http://test:8000
+addr: :8089
+tags:
+    - key: l
+      tag_id: 18
+    - key: m
+      tag_id: 20
+    - key: h
+      tag_id: 13
+    - key: c
+      tag_id: 10

@@ -1,4 +1,0 @@
-a157acad690a6299842406ed9d16a1863ae248be296b5a69bda0e76a07a91fed  godocs-inbox_0.4.1_darwin_amd64.tar.gz
-91cecce7d7c678cc99379ebc3da8eb6de9af2511af6bb17f3c47a5def89b7209  godocs-inbox_0.4.1_darwin_arm64.tar.gz
-6361386331e1c9520bdd87eb445ab5b6aadb5e77466425321999271f3646ebf4  godocs-inbox_0.4.1_linux_amd64.tar.gz
-e7d46ddfbde26fe419d21c324acb04862740206272e82ca0c6896cdbba3d6b23  godocs-inbox_0.4.1_linux_arm64.tar.gz

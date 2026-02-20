@@ -4,3 +4,7 @@ tagged/
 demo-inbox/
 demo-tagged/
 .vscode/
+
+# Distribution
+dist/
+

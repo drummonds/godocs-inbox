@@ -376,6 +376,7 @@ type App struct {
 	llmDates     map[string]bool   // ULID → date was set by LLM
 	recentSets   []RecentTagSet    // last N applied tag sets
 	docStage     map[string]string // ULID → current processing stage (stageOCR/stageLLM)
+	ocrFailed    map[string]bool   // ULID → OCR was attempted and failed
 	processingMu sync.Mutex
 	thumbDir     string           // cache dir for hi-res thumbnails
 	untagged     []GodocsDocument // cached untagged queue (server mode)
@@ -452,10 +453,17 @@ func processDocument(app *App, ulid, docType string) {
 
 	log.Printf("OCR: starting for %s (type=%s)", ulid, docType)
 
+	markFailed := func() {
+		app.processingMu.Lock()
+		app.ocrFailed[ulid] = true
+		app.processingMu.Unlock()
+	}
+
 	// Download document
 	data, _, err := app.client.DownloadDocument(ulid)
 	if err != nil {
 		log.Printf("OCR: download failed for %s: %v", ulid, err)
+		markFailed()
 		return
 	}
 
@@ -463,6 +471,7 @@ func processDocument(app *App, ulid, docType string) {
 	tmpFile, err := os.CreateTemp("", "godocs-ocr-*"+docType)
 	if err != nil {
 		log.Printf("OCR: temp file failed for %s: %v", ulid, err)
+		markFailed()
 		return
 	}
 	tmpPath := tmpFile.Name()
@@ -471,6 +480,7 @@ func processDocument(app *App, ulid, docType string) {
 	if _, err := tmpFile.Write(data); err != nil {
 		tmpFile.Close()
 		log.Printf("OCR: write failed for %s: %v", ulid, err)
+		markFailed()
 		return
 	}
 	tmpFile.Close()
@@ -479,10 +489,12 @@ func processDocument(app *App, ulid, docType string) {
 	text, err := ocr.ExtractText(tmpPath, docType)
 	if err != nil {
 		log.Printf("OCR: extraction failed for %s: %v", ulid, err)
+		markFailed()
 		return
 	}
 	if text == "" {
 		log.Printf("OCR: no text extracted for %s", ulid)
+		markFailed()
 		return
 	}
 	log.Printf("OCR: extracted %d chars for %s", len(text), ulid)
@@ -788,7 +800,7 @@ func main() {
 			os.Exit(1)
 		}
 		os.MkdirAll(cfg.TaggedDir, 0755)
-		app = &App{config: cfg, configFile: "demo", llmDates: make(map[string]bool), docStage: make(map[string]string)}
+		app = &App{config: cfg, configFile: "demo", llmDates: make(map[string]bool), docStage: make(map[string]string), ocrFailed: make(map[string]bool)}
 		log.Println("Running in demo mode (local files, no godocs server)")
 
 	default:
@@ -850,7 +862,7 @@ func main() {
 		cacheDir, _ := os.UserCacheDir()
 		thumbDir := filepath.Join(cacheDir, "godocs-inbox", "thumbs")
 		os.MkdirAll(thumbDir, 0755)
-		app = &App{config: cfg, configFile: absPath, client: client, llmDates: make(map[string]bool), docStage: make(map[string]string), thumbDir: thumbDir}
+		app = &App{config: cfg, configFile: absPath, client: client, llmDates: make(map[string]bool), docStage: make(map[string]string), ocrFailed: make(map[string]bool), thumbDir: thumbDir}
 		app.syncUntagged()
 	}
 
@@ -993,10 +1005,10 @@ func serve(app *App) {
 						item.LLMWorking = true
 					}
 
-					// Trigger OCR if no text and not already in pipeline
-					if !status.HasText && stage == "" {
+					// Trigger OCR if no text and not already in pipeline or previously failed
+					if !status.HasText && stage == "" && !app.ocrFailed[doc.ULID] {
 						app.processingMu.Lock()
-						if app.docStage[doc.ULID] == "" {
+						if app.docStage[doc.ULID] == "" && !app.ocrFailed[doc.ULID] {
 							app.docStage[doc.ULID] = stageOCR
 							go processDocument(app, doc.ULID, status.DocumentType)
 						}
